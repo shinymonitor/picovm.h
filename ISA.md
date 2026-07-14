@@ -1,13 +1,17 @@
 # ISA
 
-id = bind id of a native or foreign function
-frame = function frame size (may include return value and args setup by caller)
-body = size of a declared native function body (address_of_RETURN − address_of_FUNCTION + 1)
-reg = register id 
-val = immediate literal value, embedded in the instruction
-addr = immediate literal offset, embedded in the instruction (stack-relative or data-segment, depending on opcode)
-ptr = register id holding an address
-n = count of stack slots
+### Operand types
+
+- id = bind id of a native or foreign function
+- frame = function frame size (may include return value and args setup by caller)
+- body = size of a declared native function body (address_of_RETURN − address_of_FUNCTION + 1)
+- reg = register id 
+- val = immediate literal value, embedded in the instruction
+- addr = immediate literal offset, embedded in the instruction (stack-relative or data-segment, depending on opcode)
+- ptr = register id holding an address
+- n = count of stack slots
+
+### Opcode types
 
 - B/W = operand size: Byte or Word
 - S/D = location: Stack (frame-relative) or Data (data segment)
