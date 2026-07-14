@@ -18,3 +18,8 @@ A single-header portable bytecode virtual machine built to be embeddable and ful
 
 - Little-endian Host
 
+## Todo
+
+- Error codes
+- disable_safety preprocessor
+- Instruction streaming
