@@ -1,12 +1,15 @@
-# picovm.h
+<div align="center">
+    <img src="assets/LOGO.png", width="200"/>
+    <h1>picovm.h</h1>
+</div>
 
 A single-header portable bytecode virtual machine built to be embeddable and fully sandboxed.
 
-# Uses
+## Uses
 - **Platform Independence**: System agnostic binaries like JVM.
 - **Runtime Programming**: Game modding, live coding environment, etc.
 
-# Why use picovm.h
+## Why use picovm.h
 
 - **Fast, Flexible, and Embeddable**: Simple bytecode, cache friendly interpreter, host defined context, single header.
 - **Good C Interop**: Easy foreign (VM to C) and native (C to VM) function calls with full re-entry support.
@@ -14,7 +17,7 @@ A single-header portable bytecode virtual machine built to be embeddable and ful
 - **Fixed Memory Footprint**: Up front buffer allocation by host and no mallocs.
 - **JIT and Compiler Codegen Targetable**: Small and uniform instruction set for easy compilation targeting
 
-# Requirements
+## Requirements
 
 - Little-endian Host
 
