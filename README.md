@@ -1,6 +1,6 @@
 <div align="center">
     <img src="assets/LOGO.png", width="200"/>
-    <h1>picovm.h</h1>
+    <h1>picovm.h (WIP)</h1>
 </div>
 
 A single-header portable bytecode virtual machine built to be embeddable and fully sandboxed.
@@ -23,6 +23,6 @@ A single-header portable bytecode virtual machine built to be embeddable and ful
 
 ## Todo
 
-- Error codes
-- disable_safety preprocessor
-- Instruction streaming
+- Error codes (slower but good for debug, maybe behind preproc)
+- disable_safety preprocessor (faster but unsafe, maybe behind preproc)
+- Instruction streaming (much slower but no need for fully loaded instrution memory, only if host cant support full loading)
