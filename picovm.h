@@ -24,7 +24,7 @@
 #else
 #error "UNSUPPORTED PICOVM_WORD_SIZE"
 #endif
-#define PICOVM_WORD_BYTES (PICOVM_WORD)sizeof(PICOVM_WORD)
+#define PICOVM_WORD_BYTES ((PICOVM_WORD)sizeof(PICOVM_WORD))
 #define PICOVM_SHIFT_MASK ((PICOVM_WORD)(PICOVM_WORD_SIZE - 1))
 
 #include <string.h>
