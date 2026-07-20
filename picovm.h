@@ -27,14 +27,14 @@
 #define PICOVM_WORD_BYTES ((PICOVM_WORD)sizeof(PICOVM_WORD))
 #define PICOVM_SHIFT_MASK ((PICOVM_WORD)(PICOVM_WORD_SIZE - 1))
 
-#include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <string.h>
 
 typedef enum {
     PICOVM_OP_EXIT = 0,
     
-    PICOVM_OP_EXTERN, PICOVM_OP_FUNCTION, PICOVM_OP_RETURN, PICOVM_OP_CALL, 
+    PICOVM_OP_EXTERN, PICOVM_OP_FUNCTION, PICOVM_OP_RETURN, PICOVM_OP_CALLR, PICOVM_OP_CALLI, 
 
     PICOVM_OP_PUSH, PICOVM_OP_POP,
     
@@ -58,7 +58,10 @@ typedef enum {
     PICOVM_OP_FETCHBSP, PICOVM_OP_FETCHBSI, PICOVM_OP_FETCHBDP, PICOVM_OP_FETCHBDI,
     PICOVM_OP_FETCHWSP, PICOVM_OP_FETCHWSI, PICOVM_OP_FETCHWDP, PICOVM_OP_FETCHWDI,
     
-    PICOVM_OP_JMP, PICOVM_OP_JMPG, PICOVM_OP_JMPL, PICOVM_OP_JMPNE, PICOVM_OP_JMPE,
+    PICOVM_OP_CMPLSR, PICOVM_OP_CMPLSI, PICOVM_OP_CMPLUR, PICOVM_OP_CMPLUI, 
+    PICOVM_OP_CMPGSR, PICOVM_OP_CMPGSI, PICOVM_OP_CMPGUR, PICOVM_OP_CMPGUI, 
+    PICOVM_OP_CMPEQR, PICOVM_OP_CMPEQI,
+    PICOVM_OP_JMPR, PICOVM_OP_JMPI, PICOVM_OP_JEZR, PICOVM_OP_JEZI, PICOVM_OP_JNZR, PICOVM_OP_JNZI, 
 
     PICOVM_OP_ADDR, PICOVM_OP_ADDI, PICOVM_OP_SUBR, PICOVM_OP_SUBI, PICOVM_OP_MULR, PICOVM_OP_MULI, 
     PICOVM_OP_DIVR, PICOVM_OP_DIVI, PICOVM_OP_MODR, PICOVM_OP_MODI,
@@ -193,7 +196,10 @@ PICOVM_DEF bool PICOVM_prior(PICOVM_Context* context) {
         case PICOVM_OP_EXTERN:
             if (instruction.a >= context->foreign_functions_capacity || !(context->foreign_functions[instruction.a].registered)) return false;
         break;
-        case PICOVM_OP_CALL:
+        case PICOVM_OP_CALLR:
+            if (instruction.a >= PICOVM_REGISTERS) return false;
+        break;
+        case PICOVM_OP_CALLI:
             if (instruction.a >= context->native_functions_capacity || !(context->native_functions[instruction.a].registered)) return false;
         break;
 
@@ -212,10 +218,23 @@ PICOVM_DEF bool PICOVM_prior(PICOVM_Context* context) {
             if (instruction.b >= PICOVM_REGISTERS || instruction.a == 0) return false;
         break;
 
-        case PICOVM_OP_JMP: 
+        case PICOVM_OP_CMPLSR: case PICOVM_OP_CMPLUR: case PICOVM_OP_CMPGSR: case PICOVM_OP_CMPGUR: case PICOVM_OP_CMPEQR: 
+            if (instruction.a >= PICOVM_REGISTERS || instruction.b >= PICOVM_REGISTERS) return false;
+        break;
+        case PICOVM_OP_CMPLSI: case PICOVM_OP_CMPLUI: case PICOVM_OP_CMPGSI: case PICOVM_OP_CMPGUI: case PICOVM_OP_CMPEQI: 
+            if (instruction.b >= PICOVM_REGISTERS) return false;
+        break;
+
+        case PICOVM_OP_JMPR: 
+            if (instruction.b >= PICOVM_REGISTERS) return false;
+        break;
+        case PICOVM_OP_JMPI: 
             if (instruction.b >= context->instructions_count) return false;
         break;
-        case PICOVM_OP_JMPG: case PICOVM_OP_JMPL: case PICOVM_OP_JMPNE: case PICOVM_OP_JMPE:
+        case PICOVM_OP_JEZR: case PICOVM_OP_JNZR:
+            if (instruction.a >= PICOVM_REGISTERS || instruction.b >= PICOVM_REGISTERS) return false;
+        break;
+        case PICOVM_OP_JEZI: case PICOVM_OP_JNZI:
             if (instruction.a >= PICOVM_REGISTERS || instruction.b >= context->instructions_count) return false;
         break;
 
@@ -286,7 +305,13 @@ PICOVM_DEF bool PICOVM_step(PICOVM_Context* context) {
         context->pc = last_call.return_address;
         context->base_pointer = last_call.base_pointer;
     } break;
-    case PICOVM_OP_CALL:
+    case PICOVM_OP_CALLR:
+        if (context->call_stack_count == context->call_stack_capacity || context->registers[instruction.a] >= context->native_functions_capacity || !(context->native_functions[context->registers[instruction.a]].registered) || instruction.b > context->stack_pointer - context->base_pointer) return false;
+        context->call_stack[context->call_stack_count++] = (PICOVM_Call){context->pc + 1, context->base_pointer};
+        context->base_pointer = context->stack_pointer - instruction.b;
+        context->pc = context->native_functions[context->registers[instruction.a]].location;
+    break;
+    case PICOVM_OP_CALLI:
         if (context->call_stack_count == context->call_stack_capacity || instruction.b > context->stack_pointer - context->base_pointer) return false;
         context->call_stack[context->call_stack_count++] = (PICOVM_Call){context->pc + 1, context->base_pointer};
         context->base_pointer = context->stack_pointer - instruction.b;
@@ -358,22 +383,39 @@ PICOVM_DEF bool PICOVM_step(PICOVM_Context* context) {
         memcpy(&context->registers[instruction.b], src, is_word ? PICOVM_WORD_BYTES : 1);
         ++context->pc;
     } break;
-
-    case PICOVM_OP_JMP:
+    
+    case PICOVM_OP_CMPLSR: context->registers[instruction.b] = ((PICOVM_SIGNED_WORD)context->registers[instruction.b] > (PICOVM_SIGNED_WORD)context->registers[instruction.a]); ++context->pc; break;
+    case PICOVM_OP_CMPLUR: context->registers[instruction.b] = (context->registers[instruction.b] > context->registers[instruction.a]); ++context->pc; break;
+    case PICOVM_OP_CMPGSR: context->registers[instruction.b] = ((PICOVM_SIGNED_WORD)context->registers[instruction.b] < (PICOVM_SIGNED_WORD)context->registers[instruction.a]); ++context->pc; break;
+    case PICOVM_OP_CMPGUR: context->registers[instruction.b] = (context->registers[instruction.b] < context->registers[instruction.a]); ++context->pc; break;
+    case PICOVM_OP_CMPEQR: context->registers[instruction.b] = (context->registers[instruction.b] == context->registers[instruction.a]); ++context->pc; break;
+    case PICOVM_OP_CMPLSI: context->registers[instruction.b] = ((PICOVM_SIGNED_WORD)context->registers[instruction.b] > (PICOVM_SIGNED_WORD)instruction.a); ++context->pc; break;
+    case PICOVM_OP_CMPLUI: context->registers[instruction.b] = (context->registers[instruction.b] > instruction.a); ++context->pc; break;
+    case PICOVM_OP_CMPGSI: context->registers[instruction.b] = ((PICOVM_SIGNED_WORD)context->registers[instruction.b] < (PICOVM_SIGNED_WORD)instruction.a); ++context->pc; break;
+    case PICOVM_OP_CMPGUI: context->registers[instruction.b] = (context->registers[instruction.b] < instruction.a); ++context->pc; break;
+    case PICOVM_OP_CMPEQI: context->registers[instruction.b] = (context->registers[instruction.b] == instruction.a); ++context->pc; break;
+    
+    case PICOVM_OP_JMPR: 
+        if (context->registers[instruction.b] >= context->instructions_count) return false;
+        context->pc = context->registers[instruction.b];
+    break;
+    case PICOVM_OP_JMPI: 
         context->pc = instruction.b;
     break;
-    case PICOVM_OP_JMPG: case PICOVM_OP_JMPL: case PICOVM_OP_JMPNE: case PICOVM_OP_JMPE: {
-        PICOVM_WORD reg = context->registers[instruction.a];
-        bool take;
-        switch (instruction.opcode) {
-        case PICOVM_OP_JMPG:  take = (PICOVM_SIGNED_WORD)reg > 0; break;
-        case PICOVM_OP_JMPL:  take = (PICOVM_SIGNED_WORD)reg < 0; break;
-        case PICOVM_OP_JMPNE: take = reg != 0; break;
-        case PICOVM_OP_JMPE:  take = reg == 0; break;
-        default: return false;
-        }
-        context->pc = take ? instruction.b : context->pc + 1;
-    } break;
+    case PICOVM_OP_JEZR: 
+        if (context->registers[instruction.b] >= context->instructions_count) return false;
+        context->pc = context->registers[instruction.a] == 0 ? context->registers[instruction.b] : context->pc + 1;
+    break;
+    case PICOVM_OP_JNZR:
+        if (context->registers[instruction.b] >= context->instructions_count) return false;
+        context->pc = context->registers[instruction.a] != 0 ? context->registers[instruction.b] : context->pc + 1;
+    break;
+    case PICOVM_OP_JEZI: 
+        context->pc = context->registers[instruction.a] == 0 ? instruction.b : context->pc + 1;
+    break;
+    case PICOVM_OP_JNZI:
+        context->pc = context->registers[instruction.a] != 0 ? instruction.b : context->pc + 1;
+    break;
 
     case PICOVM_OP_ADDR: context->registers[instruction.b] += context->registers[instruction.a]; ++context->pc; break;
     case PICOVM_OP_ADDI: context->registers[instruction.b] += instruction.a; ++context->pc; break;
@@ -381,16 +423,28 @@ PICOVM_DEF bool PICOVM_step(PICOVM_Context* context) {
     case PICOVM_OP_SUBI: context->registers[instruction.b] -= instruction.a; ++context->pc; break;
     case PICOVM_OP_MULR: context->registers[instruction.b] *= context->registers[instruction.a]; ++context->pc; break;
     case PICOVM_OP_MULI: context->registers[instruction.b] *= instruction.a; ++context->pc; break;
-    case PICOVM_OP_DIVR: case PICOVM_OP_MODR: {
+    case PICOVM_OP_DIVR: {
         PICOVM_SIGNED_WORD divisor = (PICOVM_SIGNED_WORD)context->registers[instruction.a];
         if (divisor == 0 || (divisor == -1 && (PICOVM_SIGNED_WORD)context->registers[instruction.b] == PICOVM_SIGNED_WORD_MIN)) return false;
-        context->registers[instruction.b] = (PICOVM_WORD)(instruction.opcode == PICOVM_OP_DIVR ? (PICOVM_SIGNED_WORD)context->registers[instruction.b] / divisor : (PICOVM_SIGNED_WORD)context->registers[instruction.b] % divisor);
+        context->registers[instruction.b] = (PICOVM_WORD)((PICOVM_SIGNED_WORD)context->registers[instruction.b] / divisor);
         ++context->pc;
     } break;
-    case PICOVM_OP_DIVI: case PICOVM_OP_MODI: {
+    case PICOVM_OP_MODR: {
+        PICOVM_SIGNED_WORD divisor = (PICOVM_SIGNED_WORD)context->registers[instruction.a];
+        if (divisor == 0 || (divisor == -1 && (PICOVM_SIGNED_WORD)context->registers[instruction.b] == PICOVM_SIGNED_WORD_MIN)) return false;
+        context->registers[instruction.b] = (PICOVM_WORD)((PICOVM_SIGNED_WORD)context->registers[instruction.b] % divisor);
+        ++context->pc;
+    } break;
+    case PICOVM_OP_DIVI: {
         PICOVM_SIGNED_WORD divisor = (PICOVM_SIGNED_WORD)instruction.a;
         if (divisor == 0 || (divisor == -1 && (PICOVM_SIGNED_WORD)context->registers[instruction.b] == PICOVM_SIGNED_WORD_MIN)) return false;
-        context->registers[instruction.b] = (PICOVM_WORD)(instruction.opcode == PICOVM_OP_DIVI ? (PICOVM_SIGNED_WORD)context->registers[instruction.b] / divisor : (PICOVM_SIGNED_WORD)context->registers[instruction.b] % divisor);
+        context->registers[instruction.b] = (PICOVM_WORD)((PICOVM_SIGNED_WORD)context->registers[instruction.b] / divisor);
+        ++context->pc;
+    } break;
+    case PICOVM_OP_MODI: {
+        PICOVM_SIGNED_WORD divisor = (PICOVM_SIGNED_WORD)instruction.a;
+        if (divisor == 0 || (divisor == -1 && (PICOVM_SIGNED_WORD)context->registers[instruction.b] == PICOVM_SIGNED_WORD_MIN)) return false;
+        context->registers[instruction.b] = (PICOVM_WORD)((PICOVM_SIGNED_WORD)context->registers[instruction.b] % divisor);
         ++context->pc;
     } break;
 
@@ -467,3 +521,28 @@ PICOVM_DEF bool PICOVM_set_data(PICOVM_Context* context, uint8_t* data, PICOVM_W
 #endif // PICOVM_IMPLEMENTATION
 
 #endif // PICOVM_H_
+
+/*
+LICENSE:
+    MIT License
+
+    Copyright (c) 2025 Arin Upadhyay
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+*/

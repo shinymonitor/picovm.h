@@ -1,3 +1,4 @@
+#define PICOVM_WORD_SIZE 16
 #define PICOVM_IMPLEMENTATION
 #include "picovm.h"
 

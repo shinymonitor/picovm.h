@@ -23,12 +23,13 @@
 | EXIT   | - | - | Finish      |
 
 ## Functions
-|  Opcode  | A  |   B   |             Description                |
-|----------|----|-------|-----------------------------------------|
-|  EXTERN  | id | frame | Call a foreign function (Host/Syscall) |
-| FUNCTION | id | body  |       Declare a native function        |
-|  RETURN  | -  |   -   |        Return from call stack          |
-|   CALL   | id | frame |        Call a native function          |
+|  Opcode  | A   |   B   |             Description                |
+|----------|-----|-------|----------------------------------------|
+|  EXTERN  | id  | frame | Call a foreign function (Host/Syscall) |
+| FUNCTION | id  | body  |       Declare a native function        |
+|  RETURN  | -   |   -   |        Return from call stack          |
+|  CALLR   | reg | frame | Call a native function with id in a register |
+|  CALLI   | id  | frame | Call a native function with id as immediate  |
 
 ## Stack
 
@@ -111,15 +112,31 @@ One location letter and one mode letter, one side is always a register.
 | FETCHWDP | ptr     | dst reg  | Fetch word from data(ptr) into reg[B]  |
 | FETCHWDI | addr    | dst reg  | Fetch word from data(addr) into reg[B] |
 
-## Jumps
+## Comparisons
 
-| Opcode | A          | B      | Description                                |
-|--------|------------|--------|--------------------------------------------|
-| JMP    | -          | target | Jump to B unconditionally                  |
-| JMPG   | r          | target | Jump to B if reg[r] > 0 (signed)           |
-| JMPL   | r          | target | Jump to B if reg[r] < 0 (signed)            |
-| JMPNE  | r          | target | Jump to B if reg[r] != 0                   |
-| JMPE   | r          | target | Jump to B if reg[r] == 0                   |
+| Opcode | A   | B   | Description                               |
+|--------|-----|-----|--------------------------------------------|
+| CMPLSR | reg | reg | Set B = 1 if reg A < B, else 0 signed      |
+| CMPLSI | val | reg | Set B = 1 if imm A < B, else 0 signed      |
+| CMPLUR | reg | reg | Set B = 1 if reg A < B, else 0 unsigned    |
+| CMPLUI | val | reg | Set B = 1 if imm A < B, else 0 unsigned    |
+| CMPGSR | reg | reg | Set B = 1 if reg A > B, else 0 signed      |
+| CMPGSI | val | reg | Set B = 1 if imm A > B, else 0 signed      |
+| CMPGUR | reg | reg | Set B = 1 if reg A > B, else 0 unsigned    |
+| CMPGUI | val | reg | Set B = 1 if imm A > B, else 0 unsigned    |
+| CMPEQR | reg | reg | Set B = 1 if reg A == B, else 0            |
+| CMPEQI | val | reg | Set B = 1 if imm A == B, else 0            |
+
+## Jump
+
+| Opcode | A   | B   | Description                               |
+|--------|-----|-----|-------------------------------------------|
+| JMPR   | -   | reg | Jump to instruction in B                  |
+| JMPI   | -   | val | Jump to instruction B                     |
+| JEZR   | reg | reg | Jump to instruction in B if A == 0        |
+| JEZI   | reg | val | Jump to instruction B if A == 0  |
+| JNZR   | reg | reg | Jump to instruction in B if A != 0        |
+| JNZI   | reg | val | Jump to instruction B if A != 0  |
 
 ## Math
 

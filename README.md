@@ -23,6 +23,6 @@ A single-header portable bytecode virtual machine built to be embeddable and ful
 
 ## Todo
 
-- Error codes (slower but good for debug, maybe behind preproc)
-- disable_safety preprocessor (faster but unsafe, maybe behind preproc)
+- Error codes (good for debug, maybe behind preproc)
+- disable_safety preprocessor (faster but unsafe)
 - Instruction streaming (much slower but no need for fully loaded instrution memory, only if host cant support full loading)
