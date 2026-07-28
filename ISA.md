@@ -1,17 +1,13 @@
 # ISA
 
-### Operand types
-
-- id = bind id of a native or foreign function
-- frame = function frame size (may include return value and args setup by caller)
-- body = size of a declared native function body (address_of_RETURN − address_of_FUNCTION + 1)
-- reg = register id 
-- val = immediate literal value, embedded in the instruction
-- addr = immediate literal offset, embedded in the instruction (stack-relative or data-segment, depending on opcode)
-- ptr = register id holding an address
-- n = count of stack slots
-
-### Opcode types
+id = bind id of a native or foreign function
+frame = function frame size (may include return value and args setup by caller)
+body = size of a declared native function body (address_of_RETURN − address_of_FUNCTION + 1)
+reg = register id 
+val = immediate literal value, embedded in the instruction
+addr = immediate literal offset, embedded in the instruction (stack-relative or data-segment, depending on opcode)
+ptr = register id holding an address
+n = count of stack slots
 
 - B/W = operand size: Byte or Word
 - S/D = location: Stack (frame-relative) or Data (data segment)
@@ -23,6 +19,9 @@
 | EXIT   | - | - | Finish      |
 
 ## Functions
+
+Registers are callee saved.
+
 |  Opcode  | A   |   B   |             Description                |
 |----------|-----|-------|----------------------------------------|
 |  EXTERN  | id  | frame | Call a foreign function (Host/Syscall) |
@@ -42,7 +41,7 @@
 
 Two location letters and two mode letters (source, then destination). 
 On stack, addr and ptr are bounded by the current frame. 
-Anything cross-frame must live in data memory
+Anything cross-frame must live in data memory.
 
 | Opcode    | A        | B        | Description                       |
 |-----------|----------|----------|------------------------------------|
@@ -116,14 +115,14 @@ One location letter and one mode letter, one side is always a register.
 
 | Opcode | A   | B   | Description                               |
 |--------|-----|-----|--------------------------------------------|
-| CMPLSR | reg | reg | Set B = 1 if reg A < B, else 0 signed      |
-| CMPLSI | val | reg | Set B = 1 if imm A < B, else 0 signed      |
-| CMPLUR | reg | reg | Set B = 1 if reg A < B, else 0 unsigned    |
-| CMPLUI | val | reg | Set B = 1 if imm A < B, else 0 unsigned    |
-| CMPGSR | reg | reg | Set B = 1 if reg A > B, else 0 signed      |
-| CMPGSI | val | reg | Set B = 1 if imm A > B, else 0 signed      |
-| CMPGUR | reg | reg | Set B = 1 if reg A > B, else 0 unsigned    |
-| CMPGUI | val | reg | Set B = 1 if imm A > B, else 0 unsigned    |
+| CMPLSR | reg | reg | Set B = B < A signed      |
+| CMPLSI | val | reg | Set B = B < A signed      |
+| CMPLUR | reg | reg | Set B = B < A unsigned    |
+| CMPLUI | val | reg | Set B = B < A unsigned    |
+| CMPGSR | reg | reg | Set B = B > A signed      |
+| CMPGSI | val | reg | Set B = B > A signed      |
+| CMPGUR | reg | reg | Set B = B > A unsigned    |
+| CMPGUI | val | reg | Set B = B > A unsigned    |
 | CMPEQR | reg | reg | Set B = 1 if reg A == B, else 0            |
 | CMPEQI | val | reg | Set B = 1 if imm A == B, else 0            |
 

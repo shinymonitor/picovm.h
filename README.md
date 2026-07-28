@@ -1,6 +1,6 @@
 <div align="center">
     <img src="assets/LOGO.png", width="200"/>
-    <h1>picovm.h (WIP)</h1>
+    <h1>picovm.h</h1>
 </div>
 
 A single-header portable bytecode virtual machine built to be embeddable and fully sandboxed.
@@ -16,6 +16,8 @@ A single-header portable bytecode virtual machine built to be embeddable and ful
 - **Fully Sandboxed**: Load-time and run-time checks to prevent sandbox escape.
 - **Fixed Memory Footprint**: Up front buffer allocation by host and no mallocs.
 - **JIT and Compiler Codegen Targetable**: Small and uniform instruction set for easy compilation targeting
+- **Error Reporting**: Useful for developing and debugging VM programs.
+- **Optional Safety Disable**: Disabling checks to improve performance of trusted applications.
 
 ## Requirements
 
@@ -23,6 +25,4 @@ A single-header portable bytecode virtual machine built to be embeddable and ful
 
 ## Todo
 
-- Error codes (good for debug, maybe behind preproc)
-- disable_safety preprocessor (faster but unsafe)
 - Instruction streaming (much slower but no need for fully loaded instrution memory, only if host cant support full loading)

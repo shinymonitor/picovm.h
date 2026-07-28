@@ -1,2 +1,2 @@
 default:
-	gcc example.c -o example -Wall -Wextra -Werror -pedantic -O3
+	gcc example.c -o example -Wall -Wextra -Werror -pedantic -Ofast

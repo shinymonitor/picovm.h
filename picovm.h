@@ -1,3 +1,20 @@
+/*
+ 
+           __                                                  __       
+          |  \                                                |  \      
+  ______   \$$  _______   ______  __     __  ______ ____      | $$____  
+ /      \ |  \ /       \ /      \|  \   /  \|      \    \     | $$    \ 
+|  $$$$$$\| $$|  $$$$$$$|  $$$$$$\\$$\ /  $$| $$$$$$\$$$$\    | $$$$$$$\
+| $$  | $$| $$| $$      | $$  | $$ \$$\  $$ | $$ | $$ | $$    | $$  | $$
+| $$__/ $$| $$| $$_____ | $$__/ $$  \$$ $$  | $$ | $$ | $$ __ | $$  | $$
+| $$    $$| $$ \$$     \ \$$    $$   \$$$   | $$ | $$ | $$|  \| $$  | $$
+| $$$$$$$  \$$  \$$$$$$$  \$$$$$$     \$     \$$  \$$  \$$ \$$ \$$   \$$
+| $$                                                                    
+| $$                                                                    
+ \$$                                                                    
+
+*/
+
 #ifndef PICOVM_H_
 #define PICOVM_H_
 
@@ -11,19 +28,26 @@
 
 #if PICOVM_WORD_SIZE == 8
 #define PICOVM_WORD uint8_t
+#define PICOVM_WORD_MAX UINT8_MAX
 #define PICOVM_SIGNED_WORD int8_t
 #define PICOVM_SIGNED_WORD_MIN INT8_MIN
+#define PICOVM_SIGNED_WORD_MAX INT8_MAX
 #elif PICOVM_WORD_SIZE == 16
 #define PICOVM_WORD uint16_t
+#define PICOVM_WORD_MAX UINT16_MAX
 #define PICOVM_SIGNED_WORD int16_t
 #define PICOVM_SIGNED_WORD_MIN INT16_MIN
+#define PICOVM_SIGNED_WORD_MAX INT16_MAX
 #elif PICOVM_WORD_SIZE == 32
 #define PICOVM_WORD uint32_t
+#define PICOVM_WORD_MAX UINT32_MAX
 #define PICOVM_SIGNED_WORD int32_t
 #define PICOVM_SIGNED_WORD_MIN INT32_MIN
+#define PICOVM_SIGNED_WORD_MAX INT32_MAX
 #else
 #error "UNSUPPORTED PICOVM_WORD_SIZE"
 #endif
+#define PICOVM_WORD_MIN ((PICOVM_WORD)0)
 #define PICOVM_WORD_BYTES ((PICOVM_WORD)sizeof(PICOVM_WORD))
 #define PICOVM_SHIFT_MASK ((PICOVM_WORD)(PICOVM_WORD_SIZE - 1))
 
@@ -77,6 +101,40 @@ typedef struct {
     PICOVM_WORD a, b;
 } PICOVM_Instruction;
 
+typedef enum {
+    PICOVM_ERROR_NONE = 0,
+    PICOVM_ERROR_ALREADY_FINISHED,
+    PICOVM_ERROR_FUNCTION_NESTED,
+    PICOVM_ERROR_FUNCTION_ID_RANGE,
+    PICOVM_ERROR_FUNCTION_ID_REUSED,
+    PICOVM_ERROR_FUNCTION_LENGTH_MISMATCH,
+    PICOVM_ERROR_RETURN_WITHOUT_FUNCTION,
+    PICOVM_ERROR_UNTERMINATED_FUNCTION,
+    PICOVM_ERROR_EXTERN_ID_RANGE,
+    PICOVM_ERROR_EXTERN_ID_UNREGISTERED,
+    PICOVM_ERROR_CALL_ID_RANGE,
+    PICOVM_ERROR_CALL_ID_UNREGISTERED,
+    PICOVM_ERROR_REGISTER_RANGE,
+    PICOVM_ERROR_DATA_OFFSET_RANGE,
+    PICOVM_ERROR_JUMP_TARGET_RANGE,
+    PICOVM_ERROR_PC_RANGE,
+    PICOVM_ERROR_UNKNOWN_OPCODE,
+    PICOVM_ERROR_CALL_STACK_FULL,
+    PICOVM_ERROR_CALL_STACK_EMPTY,
+    PICOVM_ERROR_FRAME_SIZE_EXCEEDS,
+    PICOVM_ERROR_EXTERN_UNBALANCED,
+    PICOVM_ERROR_STACK_OVERFLOW,
+    PICOVM_ERROR_STACK_UNDERFLOW,
+    PICOVM_ERROR_STACK_OUT_OF_FRAME,
+    PICOVM_ERROR_DATA_OUT_OF_BOUNDS,
+    PICOVM_ERROR_DIVISOR_ZERO_IMM,
+    PICOVM_ERROR_DIVIDE_BY_ZERO,
+    PICOVM_ERROR_DIVIDE_OVERFLOW,
+    PICOVM_ERROR_NO_ACTIVE_CALL,
+    PICOVM_ERROR_FOREIGN_ID_RANGE,
+    PICOVM_ERROR_FOREIGN_ID_REUSED,
+} PICOVM_Error;
+
 typedef struct {PICOVM_WORD return_address, base_pointer;} PICOVM_Call;
 typedef struct PICOVM_Context PICOVM_Context;
 typedef void (*PICOVM_ForeignFunction)(PICOVM_Context*);
@@ -109,6 +167,10 @@ struct PICOVM_Context {
 
     PICOVM_ForeignFunctionTable* foreign_functions;
     PICOVM_WORD foreign_functions_capacity;
+
+    #ifdef PICOVM_ENABLE_ERROR_REPORTING
+    PICOVM_Error error;
+    #endif
 };
 
 #ifndef PICOVM_DEF
@@ -126,33 +188,61 @@ PICOVM_DEF bool PICOVM_set_data(PICOVM_Context* context, uint8_t* data, PICOVM_W
 
 #ifdef PICOVM_IMPLEMENTATION
 
+static inline bool PICOVM__fail(PICOVM_Context* context, PICOVM_Error error) {
+    #ifdef PICOVM_ENABLE_ERROR_REPORTING
+        context->error = error;
+    #else
+        (void)error;
+    #endif
+    context->finished = true;
+    return false;
+}
+
 static inline bool PICOVM__prior_verify_operand(PICOVM_Context* context, bool is_data, bool is_ptr, bool is_word, PICOVM_WORD operand) {
+    #ifdef PICOVM_DISABLE_SAFETY
+        (void)context; (void)is_word; (void)operand;
+    #endif
     if (is_ptr) {
-        if (operand >= PICOVM_REGISTERS) return false;
+        #ifndef PICOVM_DISABLE_SAFETY
+        if (operand >= PICOVM_REGISTERS) return PICOVM__fail(context, PICOVM_ERROR_REGISTER_RANGE);
+        #endif
         return true;
     }
     if (!is_data) return true;
-    else if (operand >= context->data_memory_size || (is_word ? PICOVM_WORD_BYTES : 1) > context->data_memory_size - operand) return false;
+    #ifndef PICOVM_DISABLE_SAFETY
+    else if (operand >= context->data_memory_size || (is_word ? PICOVM_WORD_BYTES : 1) > context->data_memory_size - operand) return PICOVM__fail(context, PICOVM_ERROR_DATA_OFFSET_RANGE);
+    #endif
     return true;
 }
 
 static inline bool PICOVM__step_resolve_operand(PICOVM_Context* context, bool is_data, bool is_ptr, bool is_word, PICOVM_WORD operand, uint8_t** segment_ptr) {
+    #ifdef PICOVM_DISABLE_SAFETY
+        (void)is_word;
+    #endif
     PICOVM_WORD offset;
     uint8_t* segment = is_data ? context->data_memory : context->stack_memory;
+    #ifndef PICOVM_DISABLE_SAFETY
     PICOVM_WORD size = is_word ? PICOVM_WORD_BYTES : 1;
     PICOVM_WORD frame_size = context->stack_pointer - context->base_pointer;
+    #endif
     if (is_ptr) {
         offset = context->registers[operand];
         if (is_data) {
-            if (offset > context->data_memory_size || size > context->data_memory_size - offset) return false;
+            #ifndef PICOVM_DISABLE_SAFETY
+            if (offset > context->data_memory_size || size > context->data_memory_size - offset) return PICOVM__fail(context, PICOVM_ERROR_DATA_OUT_OF_BOUNDS);
+            #endif
         } 
         else {
-            if (offset > frame_size || size > frame_size - offset) return false;
+            #ifndef PICOVM_DISABLE_SAFETY
+            if (offset > frame_size || size > frame_size - offset) return PICOVM__fail(context, PICOVM_ERROR_STACK_OUT_OF_FRAME);
+            #endif
             offset += context->base_pointer;
         }
     }
     else if (!is_data) {
-        if (operand > frame_size || size > frame_size - operand) return false;
+        #ifndef PICOVM_DISABLE_SAFETY
+        if (operand > frame_size || size > frame_size - operand) return PICOVM__fail(context, PICOVM_ERROR_STACK_OUT_OF_FRAME);
+        #endif
         offset = context->base_pointer + operand;
     } 
     else offset = operand;
@@ -162,80 +252,121 @@ static inline bool PICOVM__step_resolve_operand(PICOVM_Context* context, bool is
 
 PICOVM_DEF bool PICOVM_prior(PICOVM_Context* context) {
     PICOVM_Instruction instruction = {0};
+    #ifndef PICOVM_DISABLE_SAFETY
     bool in_function = false;
     PICOVM_WORD function_length = 0;
     PICOVM_WORD function_declared_length = 0;
+    #endif
     context->pc = 0;
     while (context->pc < context->instructions_count) {
         instruction = context->instructions[context->pc];
         switch (instruction.opcode) {
         case PICOVM_OP_FUNCTION:
-            if (in_function || instruction.a >= context->native_functions_capacity || context->native_functions[instruction.a].registered) return false;
-            context->native_functions[instruction.a].registered = true;
-            context->native_functions[instruction.a].location = context->pc + 1;
+            #ifndef PICOVM_DISABLE_SAFETY
+            if (in_function) return PICOVM__fail(context, PICOVM_ERROR_FUNCTION_NESTED);
+            else if (instruction.a >= context->native_functions_capacity) return PICOVM__fail(context, PICOVM_ERROR_FUNCTION_ID_RANGE);
+            else if (context->native_functions[instruction.a].registered) return PICOVM__fail(context, PICOVM_ERROR_FUNCTION_ID_REUSED);
             in_function = true;
             function_length = 0;
             function_declared_length = instruction.b;
+            #endif
+            context->native_functions[instruction.a].registered = true;
+            context->native_functions[instruction.a].location = context->pc + 1;
         break;
         case PICOVM_OP_RETURN:
-            if (!in_function || function_length + 1 != function_declared_length) return false;
+            #ifndef PICOVM_DISABLE_SAFETY
+            if (!in_function) return PICOVM__fail(context, PICOVM_ERROR_RETURN_WITHOUT_FUNCTION);
+            else if (function_length + 1 != function_declared_length) return PICOVM__fail(context, PICOVM_ERROR_FUNCTION_LENGTH_MISMATCH);
             ++function_length;
             in_function = false;
+            #endif
         break;
         default: break;
         }
+        #ifndef PICOVM_DISABLE_SAFETY
         if (in_function) ++function_length;
+        #endif
         ++context->pc;
     }
-    if (in_function) return false;
+    #ifndef PICOVM_DISABLE_SAFETY
+    if (in_function) return PICOVM__fail(context, PICOVM_ERROR_UNTERMINATED_FUNCTION);
+    #endif
 
     context->pc = 0;
     while (context->pc < context->instructions_count) {
         instruction = context->instructions[context->pc];
         switch (instruction.opcode) {
         case PICOVM_OP_EXTERN:
-            if (instruction.a >= context->foreign_functions_capacity || !(context->foreign_functions[instruction.a].registered)) return false;
+            #ifndef PICOVM_DISABLE_SAFETY
+            if (instruction.a >= context->foreign_functions_capacity) return PICOVM__fail(context, PICOVM_ERROR_EXTERN_ID_RANGE);
+            else if (!(context->foreign_functions[instruction.a].registered)) return PICOVM__fail(context, PICOVM_ERROR_EXTERN_ID_UNREGISTERED);
+            #endif
         break;
         case PICOVM_OP_CALLR:
-            if (instruction.a >= PICOVM_REGISTERS) return false;
+            #ifndef PICOVM_DISABLE_SAFETY
+            if (instruction.a >= PICOVM_REGISTERS) return PICOVM__fail(context, PICOVM_ERROR_REGISTER_RANGE);
+            #endif
         break;
         case PICOVM_OP_CALLI:
-            if (instruction.a >= context->native_functions_capacity || !(context->native_functions[instruction.a].registered)) return false;
+            #ifndef PICOVM_DISABLE_SAFETY
+            if (instruction.a >= context->native_functions_capacity) return PICOVM__fail(context, PICOVM_ERROR_CALL_ID_RANGE);
+            else if (!(context->native_functions[instruction.a].registered)) return PICOVM__fail(context, PICOVM_ERROR_CALL_ID_UNREGISTERED);
+            #endif
         break;
 
         case PICOVM_OP_MOVR:
         case PICOVM_OP_ADDR: case PICOVM_OP_SUBR: case PICOVM_OP_MULR: case PICOVM_OP_DIVR: case PICOVM_OP_MODR:
         case PICOVM_OP_ANDR: case PICOVM_OP_LORR: case PICOVM_OP_XORR: case PICOVM_OP_SHLR: case PICOVM_OP_SHRR:
         case PICOVM_OP_NOTR: case PICOVM_OP_NEGR:
-            if (instruction.a >= PICOVM_REGISTERS || instruction.b >= PICOVM_REGISTERS) return false;
+            #ifndef PICOVM_DISABLE_SAFETY
+            if (instruction.a >= PICOVM_REGISTERS || instruction.b >= PICOVM_REGISTERS) return PICOVM__fail(context, PICOVM_ERROR_REGISTER_RANGE);
+            #endif
         break;
         case PICOVM_OP_SETR:
         case PICOVM_OP_ADDI: case PICOVM_OP_SUBI: case PICOVM_OP_MULI:
         case PICOVM_OP_ANDI: case PICOVM_OP_LORI: case PICOVM_OP_XORI: case PICOVM_OP_SHLI: case PICOVM_OP_SHRI:
-            if (instruction.b >= PICOVM_REGISTERS) return false;
+            #ifndef PICOVM_DISABLE_SAFETY
+            if (instruction.b >= PICOVM_REGISTERS) return PICOVM__fail(context, PICOVM_ERROR_REGISTER_RANGE);
+            #endif
         break;
         case PICOVM_OP_DIVI: case PICOVM_OP_MODI:
-            if (instruction.b >= PICOVM_REGISTERS || instruction.a == 0) return false;
+            #ifndef PICOVM_DISABLE_SAFETY
+            if (instruction.b >= PICOVM_REGISTERS) return PICOVM__fail(context, PICOVM_ERROR_REGISTER_RANGE);
+            else if (instruction.a == 0) return PICOVM__fail(context, PICOVM_ERROR_DIVISOR_ZERO_IMM);
+            #endif
         break;
 
         case PICOVM_OP_CMPLSR: case PICOVM_OP_CMPLUR: case PICOVM_OP_CMPGSR: case PICOVM_OP_CMPGUR: case PICOVM_OP_CMPEQR: 
-            if (instruction.a >= PICOVM_REGISTERS || instruction.b >= PICOVM_REGISTERS) return false;
+            #ifndef PICOVM_DISABLE_SAFETY
+            if (instruction.a >= PICOVM_REGISTERS || instruction.b >= PICOVM_REGISTERS) return PICOVM__fail(context, PICOVM_ERROR_REGISTER_RANGE);
+            #endif
         break;
         case PICOVM_OP_CMPLSI: case PICOVM_OP_CMPLUI: case PICOVM_OP_CMPGSI: case PICOVM_OP_CMPGUI: case PICOVM_OP_CMPEQI: 
-            if (instruction.b >= PICOVM_REGISTERS) return false;
+            #ifndef PICOVM_DISABLE_SAFETY
+            if (instruction.b >= PICOVM_REGISTERS) return PICOVM__fail(context, PICOVM_ERROR_REGISTER_RANGE);
+            #endif
         break;
 
         case PICOVM_OP_JMPR: 
-            if (instruction.b >= PICOVM_REGISTERS) return false;
+            #ifndef PICOVM_DISABLE_SAFETY
+            if (instruction.b >= PICOVM_REGISTERS) return PICOVM__fail(context, PICOVM_ERROR_REGISTER_RANGE);
+            #endif
         break;
         case PICOVM_OP_JMPI: 
-            if (instruction.b >= context->instructions_count) return false;
+            #ifndef PICOVM_DISABLE_SAFETY
+            if (instruction.b >= context->instructions_count) return PICOVM__fail(context, PICOVM_ERROR_JUMP_TARGET_RANGE);
+            #endif
         break;
-        case PICOVM_OP_JEZR: case PICOVM_OP_JNZR:
-            if (instruction.a >= PICOVM_REGISTERS || instruction.b >= PICOVM_REGISTERS) return false;
+        case PICOVM_OP_JEZR: case PICOVM_OP_JNZR: 
+            #ifndef PICOVM_DISABLE_SAFETY
+            if (instruction.a >= PICOVM_REGISTERS || instruction.b >= PICOVM_REGISTERS) return PICOVM__fail(context, PICOVM_ERROR_REGISTER_RANGE);
+            #endif
         break;
         case PICOVM_OP_JEZI: case PICOVM_OP_JNZI:
-            if (instruction.a >= PICOVM_REGISTERS || instruction.b >= context->instructions_count) return false;
+            #ifndef PICOVM_DISABLE_SAFETY
+            if (instruction.a >= PICOVM_REGISTERS) return PICOVM__fail(context, PICOVM_ERROR_REGISTER_RANGE);
+            else if (instruction.b >= context->instructions_count) return PICOVM__fail(context, PICOVM_ERROR_JUMP_TARGET_RANGE);
+            #endif
         break;
 
         case PICOVM_OP_MOVBSSPP: case PICOVM_OP_MOVBSSPI: case PICOVM_OP_MOVBSSIP: case PICOVM_OP_MOVBSSII:
@@ -262,13 +393,20 @@ PICOVM_DEF bool PICOVM_prior(PICOVM_Context* context) {
         case PICOVM_OP_STOREWSP: case PICOVM_OP_STOREWSI: case PICOVM_OP_STOREWDP: case PICOVM_OP_STOREWDI: {
             PICOVM_WORD flags = instruction.opcode - PICOVM_OP_STOREBSP;
             bool is_word = flags & 0x04, is_data = flags & 0x02, is_ptr = !(flags & 0x01);
-            if (instruction.a >= PICOVM_REGISTERS || !PICOVM__prior_verify_operand(context, is_data, is_ptr, is_word, instruction.b)) return false;
+            #ifndef PICOVM_DISABLE_SAFETY
+            if (instruction.a >= PICOVM_REGISTERS) return PICOVM__fail(context, PICOVM_ERROR_REGISTER_RANGE);
+            else 
+            #endif
+            if (!PICOVM__prior_verify_operand(context, is_data, is_ptr, is_word, instruction.b)) return false;
         } break;
         case PICOVM_OP_FETCHBSP: case PICOVM_OP_FETCHBSI: case PICOVM_OP_FETCHBDP: case PICOVM_OP_FETCHBDI:
         case PICOVM_OP_FETCHWSP: case PICOVM_OP_FETCHWSI: case PICOVM_OP_FETCHWDP: case PICOVM_OP_FETCHWDI: {
             PICOVM_WORD flags = instruction.opcode - PICOVM_OP_FETCHBSP;
             bool is_word = flags & 0x04, is_data = flags & 0x02, is_ptr = !(flags & 0x01);
-            if (!PICOVM__prior_verify_operand(context, is_data, is_ptr, is_word, instruction.a) || instruction.b >= PICOVM_REGISTERS) return false;
+            if (!PICOVM__prior_verify_operand(context, is_data, is_ptr, is_word, instruction.a)) return false;
+            #ifndef PICOVM_DISABLE_SAFETY
+            else if (instruction.b >= PICOVM_REGISTERS) return PICOVM__fail(context, PICOVM_ERROR_REGISTER_RANGE);
+            #endif
         } break;
 
         default: break;
@@ -281,50 +419,73 @@ PICOVM_DEF bool PICOVM_prior(PICOVM_Context* context) {
 
 PICOVM_DEF bool PICOVM_step(PICOVM_Context* context) {
     PICOVM_Instruction instruction = {0};
-    if (context->pc >= context->instructions_count) return false;
+    #ifndef PICOVM_DISABLE_SAFETY
+    if (context->finished) return PICOVM__fail(context, PICOVM_ERROR_ALREADY_FINISHED);
+    if (context->pc >= context->instructions_count) return PICOVM__fail(context, PICOVM_ERROR_PC_RANGE);
+    #endif
     instruction = context->instructions[context->pc];
     switch (instruction.opcode) {
     case PICOVM_OP_EXIT:
         context->finished = true;
+        return true;
     break;
 
     case PICOVM_OP_EXTERN: {
-        if (context->call_stack_count == context->call_stack_capacity || instruction.b > context->stack_pointer - context->base_pointer) return false;
+        #ifndef PICOVM_DISABLE_SAFETY
+        if (context->call_stack_count == context->call_stack_capacity) return PICOVM__fail(context, PICOVM_ERROR_CALL_STACK_FULL);
+        else if (instruction.b > context->stack_pointer - context->base_pointer) return PICOVM__fail(context, PICOVM_ERROR_FRAME_SIZE_EXCEEDS);
         PICOVM_WORD call_stack_count_when_called = context->call_stack_count;
+        #endif
         context->call_stack[context->call_stack_count++] = (PICOVM_Call){context->pc + 1, context->base_pointer};
         context->base_pointer = context->stack_pointer - instruction.b;
         context->foreign_functions[instruction.a].foreign_function(context);
-        if (context->call_stack_count != call_stack_count_when_called) return false;
+        #ifndef PICOVM_DISABLE_SAFETY
+        if (context->call_stack_count != call_stack_count_when_called) return PICOVM__fail(context, PICOVM_ERROR_EXTERN_UNBALANCED);
+        #endif
     } break;
     case PICOVM_OP_FUNCTION:
         context->pc += instruction.b;
     break;
     case PICOVM_OP_RETURN: {
-        if (context->call_stack_count == 0) return false;
+        #ifndef PICOVM_DISABLE_SAFETY
+        if (context->call_stack_count == 0) return PICOVM__fail(context, PICOVM_ERROR_CALL_STACK_EMPTY);
+        #endif
         PICOVM_Call last_call = context->call_stack[--context->call_stack_count];
         context->pc = last_call.return_address;
         context->base_pointer = last_call.base_pointer;
     } break;
     case PICOVM_OP_CALLR:
-        if (context->call_stack_count == context->call_stack_capacity || context->registers[instruction.a] >= context->native_functions_capacity || !(context->native_functions[context->registers[instruction.a]].registered) || instruction.b > context->stack_pointer - context->base_pointer) return false;
+        #ifndef PICOVM_DISABLE_SAFETY
+        if (context->call_stack_count == context->call_stack_capacity) return PICOVM__fail(context, PICOVM_ERROR_CALL_STACK_FULL);
+        else if (context->registers[instruction.a] >= context->native_functions_capacity) return PICOVM__fail(context, PICOVM_ERROR_CALL_ID_RANGE);
+        else if (!(context->native_functions[context->registers[instruction.a]].registered)) return PICOVM__fail(context, PICOVM_ERROR_CALL_ID_UNREGISTERED);
+        else if (instruction.b > context->stack_pointer - context->base_pointer) return PICOVM__fail(context, PICOVM_ERROR_FRAME_SIZE_EXCEEDS);
+        #endif
         context->call_stack[context->call_stack_count++] = (PICOVM_Call){context->pc + 1, context->base_pointer};
         context->base_pointer = context->stack_pointer - instruction.b;
         context->pc = context->native_functions[context->registers[instruction.a]].location;
     break;
     case PICOVM_OP_CALLI:
-        if (context->call_stack_count == context->call_stack_capacity || instruction.b > context->stack_pointer - context->base_pointer) return false;
+        #ifndef PICOVM_DISABLE_SAFETY
+        if (context->call_stack_count == context->call_stack_capacity) return PICOVM__fail(context, PICOVM_ERROR_CALL_STACK_FULL);
+        else if (instruction.b > context->stack_pointer - context->base_pointer) return PICOVM__fail(context, PICOVM_ERROR_FRAME_SIZE_EXCEEDS);
+        #endif
         context->call_stack[context->call_stack_count++] = (PICOVM_Call){context->pc + 1, context->base_pointer};
         context->base_pointer = context->stack_pointer - instruction.b;
         context->pc = context->native_functions[instruction.a].location;
     break;
 
     case PICOVM_OP_PUSH:
-        if (instruction.a > context->stack_memory_size - context->stack_pointer) return false;
+        #ifndef PICOVM_DISABLE_SAFETY
+        if (instruction.a > context->stack_memory_size - context->stack_pointer) return PICOVM__fail(context, PICOVM_ERROR_STACK_OVERFLOW);
+        #endif
         context->stack_pointer += instruction.a;
         ++context->pc;
     break;
     case PICOVM_OP_POP:
-        if (instruction.a > context->stack_pointer - context->base_pointer) return false;
+        #ifndef PICOVM_DISABLE_SAFETY
+        if (instruction.a > context->stack_pointer - context->base_pointer) return PICOVM__fail(context, PICOVM_ERROR_STACK_UNDERFLOW);
+        #endif
         context->stack_pointer -= instruction.a;
         ++context->pc;
     break;
@@ -384,30 +545,36 @@ PICOVM_DEF bool PICOVM_step(PICOVM_Context* context) {
         ++context->pc;
     } break;
     
-    case PICOVM_OP_CMPLSR: context->registers[instruction.b] = ((PICOVM_SIGNED_WORD)context->registers[instruction.b] > (PICOVM_SIGNED_WORD)context->registers[instruction.a]); ++context->pc; break;
-    case PICOVM_OP_CMPLUR: context->registers[instruction.b] = (context->registers[instruction.b] > context->registers[instruction.a]); ++context->pc; break;
-    case PICOVM_OP_CMPGSR: context->registers[instruction.b] = ((PICOVM_SIGNED_WORD)context->registers[instruction.b] < (PICOVM_SIGNED_WORD)context->registers[instruction.a]); ++context->pc; break;
-    case PICOVM_OP_CMPGUR: context->registers[instruction.b] = (context->registers[instruction.b] < context->registers[instruction.a]); ++context->pc; break;
+    case PICOVM_OP_CMPLSR: context->registers[instruction.b] = ((PICOVM_SIGNED_WORD)context->registers[instruction.b] < (PICOVM_SIGNED_WORD)context->registers[instruction.a]); ++context->pc; break;
+    case PICOVM_OP_CMPLUR: context->registers[instruction.b] = (context->registers[instruction.b] < context->registers[instruction.a]); ++context->pc; break;
+    case PICOVM_OP_CMPLSI: context->registers[instruction.b] = ((PICOVM_SIGNED_WORD)context->registers[instruction.b] < (PICOVM_SIGNED_WORD)instruction.a); ++context->pc; break;
+    case PICOVM_OP_CMPLUI: context->registers[instruction.b] = (context->registers[instruction.b] < instruction.a); ++context->pc; break;
+    case PICOVM_OP_CMPGSR: context->registers[instruction.b] = ((PICOVM_SIGNED_WORD)context->registers[instruction.b] > (PICOVM_SIGNED_WORD)context->registers[instruction.a]); ++context->pc; break;
+    case PICOVM_OP_CMPGUR: context->registers[instruction.b] = (context->registers[instruction.b] > context->registers[instruction.a]); ++context->pc; break;
+    case PICOVM_OP_CMPGSI: context->registers[instruction.b] = ((PICOVM_SIGNED_WORD)context->registers[instruction.b] > (PICOVM_SIGNED_WORD)instruction.a); ++context->pc; break;
+    case PICOVM_OP_CMPGUI: context->registers[instruction.b] = (context->registers[instruction.b] > instruction.a); ++context->pc; break;
     case PICOVM_OP_CMPEQR: context->registers[instruction.b] = (context->registers[instruction.b] == context->registers[instruction.a]); ++context->pc; break;
-    case PICOVM_OP_CMPLSI: context->registers[instruction.b] = ((PICOVM_SIGNED_WORD)context->registers[instruction.b] > (PICOVM_SIGNED_WORD)instruction.a); ++context->pc; break;
-    case PICOVM_OP_CMPLUI: context->registers[instruction.b] = (context->registers[instruction.b] > instruction.a); ++context->pc; break;
-    case PICOVM_OP_CMPGSI: context->registers[instruction.b] = ((PICOVM_SIGNED_WORD)context->registers[instruction.b] < (PICOVM_SIGNED_WORD)instruction.a); ++context->pc; break;
-    case PICOVM_OP_CMPGUI: context->registers[instruction.b] = (context->registers[instruction.b] < instruction.a); ++context->pc; break;
     case PICOVM_OP_CMPEQI: context->registers[instruction.b] = (context->registers[instruction.b] == instruction.a); ++context->pc; break;
     
     case PICOVM_OP_JMPR: 
-        if (context->registers[instruction.b] >= context->instructions_count) return false;
+        #ifndef PICOVM_DISABLE_SAFETY
+        if (context->registers[instruction.b] >= context->instructions_count) return PICOVM__fail(context, PICOVM_ERROR_JUMP_TARGET_RANGE);
+        #endif
         context->pc = context->registers[instruction.b];
     break;
     case PICOVM_OP_JMPI: 
         context->pc = instruction.b;
     break;
     case PICOVM_OP_JEZR: 
-        if (context->registers[instruction.b] >= context->instructions_count) return false;
+        #ifndef PICOVM_DISABLE_SAFETY
+        if (context->registers[instruction.b] >= context->instructions_count) return PICOVM__fail(context, PICOVM_ERROR_JUMP_TARGET_RANGE);
+        #endif
         context->pc = context->registers[instruction.a] == 0 ? context->registers[instruction.b] : context->pc + 1;
     break;
     case PICOVM_OP_JNZR:
-        if (context->registers[instruction.b] >= context->instructions_count) return false;
+        #ifndef PICOVM_DISABLE_SAFETY
+        if (context->registers[instruction.b] >= context->instructions_count) return PICOVM__fail(context, PICOVM_ERROR_JUMP_TARGET_RANGE);
+        #endif
         context->pc = context->registers[instruction.a] != 0 ? context->registers[instruction.b] : context->pc + 1;
     break;
     case PICOVM_OP_JEZI: 
@@ -425,25 +592,37 @@ PICOVM_DEF bool PICOVM_step(PICOVM_Context* context) {
     case PICOVM_OP_MULI: context->registers[instruction.b] *= instruction.a; ++context->pc; break;
     case PICOVM_OP_DIVR: {
         PICOVM_SIGNED_WORD divisor = (PICOVM_SIGNED_WORD)context->registers[instruction.a];
-        if (divisor == 0 || (divisor == -1 && (PICOVM_SIGNED_WORD)context->registers[instruction.b] == PICOVM_SIGNED_WORD_MIN)) return false;
+        #ifndef PICOVM_DISABLE_SAFETY
+        if (divisor == 0) return PICOVM__fail(context, PICOVM_ERROR_DIVIDE_BY_ZERO);
+        else if ((divisor == -1 && (PICOVM_SIGNED_WORD)context->registers[instruction.b] == PICOVM_SIGNED_WORD_MIN)) return PICOVM__fail(context, PICOVM_ERROR_DIVIDE_OVERFLOW);
+        #endif
         context->registers[instruction.b] = (PICOVM_WORD)((PICOVM_SIGNED_WORD)context->registers[instruction.b] / divisor);
         ++context->pc;
     } break;
     case PICOVM_OP_MODR: {
         PICOVM_SIGNED_WORD divisor = (PICOVM_SIGNED_WORD)context->registers[instruction.a];
-        if (divisor == 0 || (divisor == -1 && (PICOVM_SIGNED_WORD)context->registers[instruction.b] == PICOVM_SIGNED_WORD_MIN)) return false;
+        #ifndef PICOVM_DISABLE_SAFETY
+        if (divisor == 0) return PICOVM__fail(context, PICOVM_ERROR_DIVIDE_BY_ZERO);
+        else if ((divisor == -1 && (PICOVM_SIGNED_WORD)context->registers[instruction.b] == PICOVM_SIGNED_WORD_MIN)) return PICOVM__fail(context, PICOVM_ERROR_DIVIDE_OVERFLOW);
+        #endif
         context->registers[instruction.b] = (PICOVM_WORD)((PICOVM_SIGNED_WORD)context->registers[instruction.b] % divisor);
         ++context->pc;
     } break;
     case PICOVM_OP_DIVI: {
         PICOVM_SIGNED_WORD divisor = (PICOVM_SIGNED_WORD)instruction.a;
-        if (divisor == 0 || (divisor == -1 && (PICOVM_SIGNED_WORD)context->registers[instruction.b] == PICOVM_SIGNED_WORD_MIN)) return false;
+        #ifndef PICOVM_DISABLE_SAFETY
+        if (divisor == 0) return PICOVM__fail(context, PICOVM_ERROR_DIVIDE_BY_ZERO);
+        else if ((divisor == -1 && (PICOVM_SIGNED_WORD)context->registers[instruction.b] == PICOVM_SIGNED_WORD_MIN)) return PICOVM__fail(context, PICOVM_ERROR_DIVIDE_OVERFLOW);
+        #endif
         context->registers[instruction.b] = (PICOVM_WORD)((PICOVM_SIGNED_WORD)context->registers[instruction.b] / divisor);
         ++context->pc;
     } break;
     case PICOVM_OP_MODI: {
         PICOVM_SIGNED_WORD divisor = (PICOVM_SIGNED_WORD)instruction.a;
-        if (divisor == 0 || (divisor == -1 && (PICOVM_SIGNED_WORD)context->registers[instruction.b] == PICOVM_SIGNED_WORD_MIN)) return false;
+        #ifndef PICOVM_DISABLE_SAFETY
+        if (divisor == 0) return PICOVM__fail(context, PICOVM_ERROR_DIVIDE_BY_ZERO);
+        else if ((divisor == -1 && (PICOVM_SIGNED_WORD)context->registers[instruction.b] == PICOVM_SIGNED_WORD_MIN)) return PICOVM__fail(context, PICOVM_ERROR_DIVIDE_OVERFLOW);
+        #endif
         context->registers[instruction.b] = (PICOVM_WORD)((PICOVM_SIGNED_WORD)context->registers[instruction.b] % divisor);
         ++context->pc;
     } break;
@@ -463,21 +642,29 @@ PICOVM_DEF bool PICOVM_step(PICOVM_Context* context) {
     case PICOVM_OP_NEGR: context->registers[instruction.b] = -context->registers[instruction.a]; ++context->pc; break;
 
     default:
-        return false;
+        return PICOVM__fail(context, PICOVM_ERROR_UNKNOWN_OPCODE);
     break;
     }
     return true;
 }
 
 PICOVM_DEF bool PICOVM_register_foreign_function(PICOVM_Context* context, PICOVM_ForeignFunction foreign_function, PICOVM_WORD foreign_function_id) {
-    if (foreign_function_id >= context->foreign_functions_capacity || context->foreign_functions[foreign_function_id].registered) return false;
+    #ifndef PICOVM_DISABLE_SAFETY
+    if (foreign_function_id >= context->foreign_functions_capacity) return PICOVM__fail(context, PICOVM_ERROR_FOREIGN_ID_RANGE);
+    else if (context->foreign_functions[foreign_function_id].registered) return PICOVM__fail(context, PICOVM_ERROR_FOREIGN_ID_REUSED);
+    #endif
     context->foreign_functions[foreign_function_id].registered = true;
     context->foreign_functions[foreign_function_id].foreign_function = foreign_function;
     return true;
 }
 
 PICOVM_DEF bool PICOVM_call_native_function(PICOVM_Context* context, PICOVM_WORD native_function_id, uint8_t* args, PICOVM_WORD args_size, uint8_t* return_value, PICOVM_WORD return_value_size) {
-    if (context->call_stack_count == context->call_stack_capacity || return_value_size > context->stack_memory_size - context->stack_pointer || args_size > context->stack_memory_size - context->stack_pointer - return_value_size || native_function_id >= context->native_functions_capacity || !(context->native_functions[native_function_id].registered)) return false;
+    #ifndef PICOVM_DISABLE_SAFETY
+    if (context->call_stack_count == context->call_stack_capacity) return PICOVM__fail(context, PICOVM_ERROR_CALL_STACK_FULL);
+    else if (return_value_size > context->stack_memory_size - context->stack_pointer || args_size > context->stack_memory_size - context->stack_pointer - return_value_size) return PICOVM__fail(context, PICOVM_ERROR_STACK_OVERFLOW);
+    else if (native_function_id >= context->native_functions_capacity) return PICOVM__fail(context, PICOVM_ERROR_CALL_ID_RANGE);
+    else if (!(context->native_functions[native_function_id].registered)) return PICOVM__fail(context, PICOVM_ERROR_CALL_ID_UNREGISTERED);
+    #endif
     PICOVM_WORD stack_pointer_when_called = context->stack_pointer;
     PICOVM_WORD call_stack_when_called = context->call_stack_count;    
     context->stack_pointer += return_value_size;
@@ -486,19 +673,28 @@ PICOVM_DEF bool PICOVM_call_native_function(PICOVM_Context* context, PICOVM_WORD
     context->call_stack[context->call_stack_count++] = (PICOVM_Call){context->pc + 1, context->base_pointer};
     context->base_pointer = context->stack_pointer - (return_value_size + args_size);
     context->pc = context->native_functions[native_function_id].location;
-    while((context->call_stack_count) != call_stack_when_called && !(context->finished)) if (!PICOVM_step(context)) return false;
+    while (context->call_stack_count != call_stack_when_called && !(context->finished)) if (!PICOVM_step(context)) { context->stack_pointer = stack_pointer_when_called; return false; }
+    #ifndef PICOVM_DISABLE_SAFETY
+    if (context->call_stack_count != call_stack_when_called) { context->stack_pointer = stack_pointer_when_called; return false; }
+    #endif
     if (return_value_size > 0 && return_value != NULL) memcpy(return_value, context->stack_memory + stack_pointer_when_called, return_value_size);
     context->stack_pointer = stack_pointer_when_called;
     return true;
 }
 
 PICOVM_DEF bool PICOVM_get_args(PICOVM_Context* context, PICOVM_WORD return_value_size, PICOVM_WORD offset, PICOVM_WORD args_size, uint8_t* args) {
-    if (context->call_stack_count == 0 || return_value_size > context->stack_pointer - context->base_pointer || offset > context->stack_pointer - context->base_pointer - return_value_size || args_size > context->stack_pointer - context->base_pointer - return_value_size - offset) return false;
+    #ifndef PICOVM_DISABLE_SAFETY
+    if (context->call_stack_count == 0) return PICOVM__fail(context, PICOVM_ERROR_CALL_STACK_EMPTY);
+    else if (return_value_size > context->stack_pointer - context->base_pointer || offset > context->stack_pointer - context->base_pointer - return_value_size || args_size > context->stack_pointer - context->base_pointer - return_value_size - offset) return PICOVM__fail(context, PICOVM_ERROR_STACK_OUT_OF_FRAME);
+    #endif
     memcpy(args, context->stack_memory + context->base_pointer + return_value_size + offset, args_size);
     return true;
 }
 PICOVM_DEF bool PICOVM_return_foreign_function(PICOVM_Context* context, uint8_t* return_value, PICOVM_WORD return_value_size, PICOVM_WORD args_size) {
-    if (context->call_stack_count == 0 || return_value_size > context->stack_pointer - context->base_pointer || args_size > context->stack_pointer - context->base_pointer - return_value_size) return false;
+    #ifndef PICOVM_DISABLE_SAFETY
+    if (context->call_stack_count == 0) return PICOVM__fail(context, PICOVM_ERROR_CALL_STACK_EMPTY);
+    else if (return_value_size > context->stack_pointer - context->base_pointer || args_size > context->stack_pointer - context->base_pointer - return_value_size) return PICOVM__fail(context, PICOVM_ERROR_STACK_OUT_OF_FRAME);
+    #endif
     context->stack_pointer -= args_size;
     if (return_value_size > 0 && return_value != NULL) memcpy(context->stack_memory + context->base_pointer, return_value, return_value_size);
     PICOVM_Call last_call = context->call_stack[--context->call_stack_count];
@@ -508,12 +704,16 @@ PICOVM_DEF bool PICOVM_return_foreign_function(PICOVM_Context* context, uint8_t*
 }
 
 PICOVM_DEF bool PICOVM_get_data(PICOVM_Context* context, PICOVM_WORD offset, PICOVM_WORD data_size, uint8_t* data) {
-    if (offset > context->data_memory_size || data_size > context->data_memory_size - offset) return false;
+    #ifndef PICOVM_DISABLE_SAFETY
+    if (offset > context->data_memory_size || data_size > context->data_memory_size - offset) return PICOVM__fail(context, PICOVM_ERROR_DATA_OUT_OF_BOUNDS);
+    #endif
     memcpy(data, context->data_memory + offset, data_size);
     return true;
 }
 PICOVM_DEF bool PICOVM_set_data(PICOVM_Context* context, uint8_t* data, PICOVM_WORD data_size, PICOVM_WORD offset) {
-    if (offset > context->data_memory_size || data_size > context->data_memory_size - offset) return false;
+    #ifndef PICOVM_DISABLE_SAFETY
+    if (offset > context->data_memory_size || data_size > context->data_memory_size - offset) return PICOVM__fail(context, PICOVM_ERROR_DATA_OUT_OF_BOUNDS);
+    #endif
     memcpy(context->data_memory + offset, data, data_size);
     return true;
 }
@@ -526,7 +726,7 @@ PICOVM_DEF bool PICOVM_set_data(PICOVM_Context* context, uint8_t* data, PICOVM_W
 LICENSE:
     MIT License
 
-    Copyright (c) 2025 Arin Upadhyay
+    Copyright (c) 2026 Arin Upadhyay
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal
