@@ -4,12 +4,11 @@
 
 - id = bind id of a native or foreign function
 - frame = function frame size (may include return value and args setup by caller)
-- body = size of a declared native function body (address_of_RETURN - address_of_FUNCTION + 1)
 - reg = register id 
 - val = immediate literal value, embedded in the instruction
 - addr = immediate literal offset, embedded in the instruction (stack-relative or data-segment, depending on opcode)
 - ptr = register id holding an address
-- n = count of stack slots
+- n = count of stack bytes
 
 ### Opcode types
 
@@ -29,7 +28,7 @@ Registers are callee saved.
 |  Opcode  | A   |   B   |             Description                |
 |----------|-----|-------|----------------------------------------|
 |  EXTERN  | id  | frame | Call a foreign function (Host/Syscall) |
-| FUNCTION | id  | body  |       Declare a native function        |
+| FUNCTION | id  |   -   |       Declare a native function        |
 |  RETURN  | -   |   -   |        Return from call stack          |
 |  CALLR   | reg | frame | Call a native function with id in a register |
 |  CALLI   | id  | frame | Call a native function with id as immediate  |
@@ -38,8 +37,8 @@ Registers are callee saved.
 
 | Opcode | A | B |         Description         |
 |--------|---|---|-----------------------------|
-|  PUSH  | n | - | Push n spaces to the stack  |
-|  POP   | n | - | Pop n spaces from the stack |
+|  PUSH  | n | - | Push n bytes to the stack  |
+|  POP   | n | - | Pop n bytes from the stack |
 
 ## Move
 

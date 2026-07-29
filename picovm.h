@@ -107,7 +107,6 @@ typedef enum {
     PICOVM_ERROR_FUNCTION_NESTED,
     PICOVM_ERROR_FUNCTION_ID_RANGE,
     PICOVM_ERROR_FUNCTION_ID_REUSED,
-    PICOVM_ERROR_FUNCTION_LENGTH_MISMATCH,
     PICOVM_ERROR_RETURN_WITHOUT_FUNCTION,
     PICOVM_ERROR_UNTERMINATED_FUNCTION,
     PICOVM_ERROR_EXTERN_ID_RANGE,
@@ -138,7 +137,7 @@ typedef enum {
 typedef struct {PICOVM_WORD return_address, base_pointer;} PICOVM_Call;
 typedef struct PICOVM_Context PICOVM_Context;
 typedef void (*PICOVM_ForeignFunction)(PICOVM_Context*);
-typedef struct {bool registered; PICOVM_WORD location;} PICOVM_NativeFunctionTable;
+typedef struct {bool registered; PICOVM_WORD location, length;} PICOVM_NativeFunctionTable;
 typedef struct {bool registered; PICOVM_ForeignFunction foreign_function;} PICOVM_ForeignFunctionTable;
 
 struct PICOVM_Context {
@@ -252,11 +251,9 @@ static inline bool PICOVM__step_resolve_operand(PICOVM_Context* context, bool is
 
 PICOVM_DEF bool PICOVM_prior(PICOVM_Context* context) {
     PICOVM_Instruction instruction = {0};
-    #ifndef PICOVM_DISABLE_SAFETY
     bool in_function = false;
+    PICOVM_WORD function_id = 0;
     PICOVM_WORD function_length = 0;
-    PICOVM_WORD function_declared_length = 0;
-    #endif
     context->pc = 0;
     while (context->pc < context->instructions_count) {
         instruction = context->instructions[context->pc];
@@ -266,26 +263,23 @@ PICOVM_DEF bool PICOVM_prior(PICOVM_Context* context) {
             if (in_function) return PICOVM__fail(context, PICOVM_ERROR_FUNCTION_NESTED);
             else if (instruction.a >= context->native_functions_capacity) return PICOVM__fail(context, PICOVM_ERROR_FUNCTION_ID_RANGE);
             else if (context->native_functions[instruction.a].registered) return PICOVM__fail(context, PICOVM_ERROR_FUNCTION_ID_REUSED);
-            in_function = true;
-            function_length = 0;
-            function_declared_length = instruction.b;
             #endif
+            in_function = true;
+            function_id = instruction.a;
+            function_length = 0;
             context->native_functions[instruction.a].registered = true;
             context->native_functions[instruction.a].location = context->pc + 1;
         break;
         case PICOVM_OP_RETURN:
             #ifndef PICOVM_DISABLE_SAFETY
             if (!in_function) return PICOVM__fail(context, PICOVM_ERROR_RETURN_WITHOUT_FUNCTION);
-            else if (function_length + 1 != function_declared_length) return PICOVM__fail(context, PICOVM_ERROR_FUNCTION_LENGTH_MISMATCH);
-            ++function_length;
-            in_function = false;
             #endif
+            in_function = false;
+            context->native_functions[function_id].length = function_length + 1;
         break;
         default: break;
         }
-        #ifndef PICOVM_DISABLE_SAFETY
         if (in_function) ++function_length;
-        #endif
         ++context->pc;
     }
     #ifndef PICOVM_DISABLE_SAFETY
@@ -444,7 +438,7 @@ PICOVM_DEF bool PICOVM_step(PICOVM_Context* context) {
         #endif
     } break;
     case PICOVM_OP_FUNCTION:
-        context->pc += instruction.b;
+        context->pc += context->native_functions[instruction.a].length;
     break;
     case PICOVM_OP_RETURN: {
         #ifndef PICOVM_DISABLE_SAFETY

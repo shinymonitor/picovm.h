@@ -48,7 +48,7 @@ static inline void print_context_memory(PICOVM_Context* context){
     printf("DATA["); for (size_t i = 0; i < context->data_memory_size; ++i) printf("%02x ", context->data_memory[i]); printf("]\n");
     if (!PICOVM_return_foreign_function(context, NULL, 0, 0)) printf("%s", "RETURN FOREIGN FUNCTION FAILED\n");
 }
-static inline void print_ascii_and_call_native(PICOVM_Context* context){
+static inline void print_cstr_and_call_native(PICOVM_Context* context){
     uint8_t data_ptr = 0;
     if (!PICOVM_get_args(context, 0, 0, 1, (uint8_t*)&data_ptr)) printf("%s", "FOREIGN FUNCTION GET ARGS FAILED\n");
     printf("\x1b[0;31m");
@@ -62,7 +62,7 @@ static inline void print_ascii_and_call_native(PICOVM_Context* context){
 }
 
 int main(){
-    instructions[instructions_count++] = (PICOVM_Instruction){PICOVM_OP_FUNCTION, 2, 3};
+    instructions[instructions_count++] = (PICOVM_Instruction){PICOVM_OP_FUNCTION, 2, 0};
     instructions[instructions_count++] = (PICOVM_Instruction){PICOVM_OP_EXTERN, 0, 0};
     instructions[instructions_count++] = (PICOVM_Instruction){PICOVM_OP_RETURN, 0, 0};
     
@@ -75,7 +75,7 @@ int main(){
     PICOVM_Context context = init_context(instructions, instructions_count, data, sizeof(data)/sizeof(data[0]));
 
     PICOVM_register_foreign_function(&context, print_context_memory, 0);
-    PICOVM_register_foreign_function(&context, print_ascii_and_call_native, 1);
+    PICOVM_register_foreign_function(&context, print_cstr_and_call_native, 1);
     if (!PICOVM_prior(&context)) return 1;
     while (!context.finished) {
         if (!PICOVM_step(&context)) return 1;
