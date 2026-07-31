@@ -5,10 +5,9 @@
 - id = bind id of a native or foreign function
 - frame = function frame size (may include return value and args setup by caller)
 - reg = register id 
+- ptr = register id holding an address
 - val = immediate literal value, embedded in the instruction
 - addr = immediate literal offset, embedded in the instruction (stack-relative or data-segment, depending on opcode)
-- ptr = register id holding an address
-- n = count of stack bytes
 
 ### Opcode types
 
@@ -23,7 +22,7 @@
 
 ## Functions
 
-Registers are callee saved.
+Registers are caller saved.
 
 |  Opcode  | A   |   B   |             Description                |
 |----------|-----|-------|----------------------------------------|
@@ -35,10 +34,10 @@ Registers are callee saved.
 
 ## Stack
 
-| Opcode | A | B |         Description         |
-|--------|---|---|-----------------------------|
-|  PUSH  | n | - | Push n bytes to the stack  |
-|  POP   | n | - | Pop n bytes from the stack |
+| Opcode | A   | B |         Description         |
+|--------|-----|---|-----------------------------|
+|  PUSH  | val | - | Push n bytes to the stack  |
+|  POP   | val | - | Pop n bytes from the stack |
 
 ## Move
 
@@ -133,8 +132,8 @@ One location letter and one mode letter, one side is always a register.
 
 | Opcode | A   | B   | Description                               |
 |--------|-----|-----|-------------------------------------------|
-| JMPR   | -   | reg | Jump to instruction in B                  |
-| JMPI   | -   | val | Jump to instruction B                     |
+| JMPR   | reg | -   | Jump to instruction in A                  |
+| JMPI   | val | -   | Jump to instruction A                     |
 | JEZR   | reg | reg | Jump to instruction in B if A == 0        |
 | JEZI   | reg | val | Jump to instruction B if A == 0  |
 | JNZR   | reg | reg | Jump to instruction in B if A != 0        |

@@ -120,7 +120,7 @@ typedef enum {
     PICOVM_ERROR_UNKNOWN_OPCODE,
     PICOVM_ERROR_CALL_STACK_FULL,
     PICOVM_ERROR_CALL_STACK_EMPTY,
-    PICOVM_ERROR_FRAME_SIZE_EXCEEDS,
+    PICOVM_ERROR_FRAME_EXCEEDED_BASE,
     PICOVM_ERROR_EXTERN_UNBALANCED,
     PICOVM_ERROR_STACK_OVERFLOW,
     PICOVM_ERROR_STACK_UNDERFLOW,
@@ -129,7 +129,6 @@ typedef enum {
     PICOVM_ERROR_DIVISOR_ZERO_IMM,
     PICOVM_ERROR_DIVIDE_BY_ZERO,
     PICOVM_ERROR_DIVIDE_OVERFLOW,
-    PICOVM_ERROR_NO_ACTIVE_CALL,
     PICOVM_ERROR_FOREIGN_ID_RANGE,
     PICOVM_ERROR_FOREIGN_ID_REUSED,
 } PICOVM_Error;
@@ -186,6 +185,40 @@ PICOVM_DEF bool PICOVM_get_data(PICOVM_Context* context, PICOVM_WORD offset, PIC
 PICOVM_DEF bool PICOVM_set_data(PICOVM_Context* context, uint8_t* data, PICOVM_WORD data_size, PICOVM_WORD offset);
 
 #ifdef PICOVM_IMPLEMENTATION
+
+#ifdef PICOVM_ENABLE_ERROR_REPORTING
+static const char* const PICOVM_error_names[] = {
+    "PICOVM_ERROR_NONE",
+    "PICOVM_ERROR_ALREADY_FINISHED",
+    "PICOVM_ERROR_FUNCTION_NESTED",
+    "PICOVM_ERROR_FUNCTION_ID_RANGE",
+    "PICOVM_ERROR_FUNCTION_ID_REUSED",
+    "PICOVM_ERROR_RETURN_WITHOUT_FUNCTION",
+    "PICOVM_ERROR_UNTERMINATED_FUNCTION",
+    "PICOVM_ERROR_EXTERN_ID_RANGE",
+    "PICOVM_ERROR_EXTERN_ID_UNREGISTERED",
+    "PICOVM_ERROR_CALL_ID_RANGE",
+    "PICOVM_ERROR_CALL_ID_UNREGISTERED",
+    "PICOVM_ERROR_REGISTER_RANGE",
+    "PICOVM_ERROR_DATA_OFFSET_RANGE",
+    "PICOVM_ERROR_JUMP_TARGET_RANGE",
+    "PICOVM_ERROR_PC_RANGE",
+    "PICOVM_ERROR_UNKNOWN_OPCODE",
+    "PICOVM_ERROR_CALL_STACK_FULL",
+    "PICOVM_ERROR_CALL_STACK_EMPTY",
+    "PICOVM_ERROR_FRAME_EXCEEDED_BASE",
+    "PICOVM_ERROR_EXTERN_UNBALANCED",
+    "PICOVM_ERROR_STACK_OVERFLOW",
+    "PICOVM_ERROR_STACK_UNDERFLOW",
+    "PICOVM_ERROR_STACK_OUT_OF_FRAME",
+    "PICOVM_ERROR_DATA_OUT_OF_BOUNDS",
+    "PICOVM_ERROR_DIVISOR_ZERO_IMM",
+    "PICOVM_ERROR_DIVIDE_BY_ZERO",
+    "PICOVM_ERROR_DIVIDE_OVERFLOW",
+    "PICOVM_ERROR_FOREIGN_ID_RANGE",
+    "PICOVM_ERROR_FOREIGN_ID_REUSED",
+};
+#endif
 
 static inline bool PICOVM__fail(PICOVM_Context* context, PICOVM_Error error) {
     #ifdef PICOVM_ENABLE_ERROR_REPORTING
@@ -343,12 +376,12 @@ PICOVM_DEF bool PICOVM_prior(PICOVM_Context* context) {
 
         case PICOVM_OP_JMPR: 
             #ifndef PICOVM_DISABLE_SAFETY
-            if (instruction.b >= PICOVM_REGISTERS) return PICOVM__fail(context, PICOVM_ERROR_REGISTER_RANGE);
+            if (instruction.a >= PICOVM_REGISTERS) return PICOVM__fail(context, PICOVM_ERROR_REGISTER_RANGE);
             #endif
         break;
         case PICOVM_OP_JMPI: 
             #ifndef PICOVM_DISABLE_SAFETY
-            if (instruction.b >= context->instructions_count) return PICOVM__fail(context, PICOVM_ERROR_JUMP_TARGET_RANGE);
+            if (instruction.a >= context->instructions_count) return PICOVM__fail(context, PICOVM_ERROR_JUMP_TARGET_RANGE);
             #endif
         break;
         case PICOVM_OP_JEZR: case PICOVM_OP_JNZR: 
@@ -427,7 +460,7 @@ PICOVM_DEF bool PICOVM_step(PICOVM_Context* context) {
     case PICOVM_OP_EXTERN: {
         #ifndef PICOVM_DISABLE_SAFETY
         if (context->call_stack_count == context->call_stack_capacity) return PICOVM__fail(context, PICOVM_ERROR_CALL_STACK_FULL);
-        else if (instruction.b > context->stack_pointer - context->base_pointer) return PICOVM__fail(context, PICOVM_ERROR_FRAME_SIZE_EXCEEDS);
+        else if (instruction.b > context->stack_pointer - context->base_pointer) return PICOVM__fail(context, PICOVM_ERROR_FRAME_EXCEEDED_BASE);
         PICOVM_WORD call_stack_count_when_called = context->call_stack_count;
         #endif
         context->call_stack[context->call_stack_count++] = (PICOVM_Call){context->pc + 1, context->base_pointer};
@@ -453,7 +486,7 @@ PICOVM_DEF bool PICOVM_step(PICOVM_Context* context) {
         if (context->call_stack_count == context->call_stack_capacity) return PICOVM__fail(context, PICOVM_ERROR_CALL_STACK_FULL);
         else if (context->registers[instruction.a] >= context->native_functions_capacity) return PICOVM__fail(context, PICOVM_ERROR_CALL_ID_RANGE);
         else if (!(context->native_functions[context->registers[instruction.a]].registered)) return PICOVM__fail(context, PICOVM_ERROR_CALL_ID_UNREGISTERED);
-        else if (instruction.b > context->stack_pointer - context->base_pointer) return PICOVM__fail(context, PICOVM_ERROR_FRAME_SIZE_EXCEEDS);
+        else if (instruction.b > context->stack_pointer - context->base_pointer) return PICOVM__fail(context, PICOVM_ERROR_FRAME_EXCEEDED_BASE);
         #endif
         context->call_stack[context->call_stack_count++] = (PICOVM_Call){context->pc + 1, context->base_pointer};
         context->base_pointer = context->stack_pointer - instruction.b;
@@ -462,7 +495,7 @@ PICOVM_DEF bool PICOVM_step(PICOVM_Context* context) {
     case PICOVM_OP_CALLI:
         #ifndef PICOVM_DISABLE_SAFETY
         if (context->call_stack_count == context->call_stack_capacity) return PICOVM__fail(context, PICOVM_ERROR_CALL_STACK_FULL);
-        else if (instruction.b > context->stack_pointer - context->base_pointer) return PICOVM__fail(context, PICOVM_ERROR_FRAME_SIZE_EXCEEDS);
+        else if (instruction.b > context->stack_pointer - context->base_pointer) return PICOVM__fail(context, PICOVM_ERROR_FRAME_EXCEEDED_BASE);
         #endif
         context->call_stack[context->call_stack_count++] = (PICOVM_Call){context->pc + 1, context->base_pointer};
         context->base_pointer = context->stack_pointer - instruction.b;
@@ -552,12 +585,12 @@ PICOVM_DEF bool PICOVM_step(PICOVM_Context* context) {
     
     case PICOVM_OP_JMPR: 
         #ifndef PICOVM_DISABLE_SAFETY
-        if (context->registers[instruction.b] >= context->instructions_count) return PICOVM__fail(context, PICOVM_ERROR_JUMP_TARGET_RANGE);
+        if (context->registers[instruction.a] >= context->instructions_count) return PICOVM__fail(context, PICOVM_ERROR_JUMP_TARGET_RANGE);
         #endif
-        context->pc = context->registers[instruction.b];
+        context->pc = context->registers[instruction.a];
     break;
     case PICOVM_OP_JMPI: 
-        context->pc = instruction.b;
+        context->pc = instruction.a;
     break;
     case PICOVM_OP_JEZR: 
         #ifndef PICOVM_DISABLE_SAFETY

@@ -22,7 +22,3 @@ A single-header portable bytecode virtual machine built to be embeddable and ful
 ## Requirements
 
 - Little-endian Host
-
-## Todo
-
-- Instruction streaming (much slower but no need for fully loaded instrution memory, only if host cant support full loading)
